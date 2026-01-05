@@ -1,26 +1,28 @@
+/* src/index.css */
+
+/* 1. 引入 Tailwind 的三個核心層 */
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-/* 強制全域設定 */
-html, body {
-  height: 100%;
-  width: 100%;
-  margin: 0;
-  padding: 0;
-  overflow-x: hidden;
-  -webkit-tap-highlight-color: transparent;
-  font-family: system-ui, -apple-system, sans-serif;
-  background-color: #f3f4f6;
+/* 2. 全域樣式設定 & 手機版面修復 */
+:root {
+  font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
 }
 
+/* 這裡是修復手機版右側白邊的關鍵 */
+html, body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  overflow-x: hidden; /* 禁止水平滾動，防止內容超出螢幕寬度 */
+  background-color: #f3f4f6; /* 設定一個淡灰色背景 (Tailwind gray-100) */
+}
+
+/* 讓 App 容器也填滿高度 */
 #root {
   min-height: 100vh;
   width: 100%;
-  display: flex;
-  flex-direction: column;
-}
-
-.dark body {
-  background-color: #020617;
 }
