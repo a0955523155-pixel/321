@@ -44,7 +44,7 @@ const firebaseConfig = {
   measurementId: "G-CYS5W473VS"
 };
 
-// [關鍵修正] 使用標準單例模式初始化
+// 初始化 Firebase
 const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 const auth = getAuth(app);
 const db = getFirestore(app);
@@ -54,7 +54,7 @@ const appId = "greenshootteam";
 const ADMIN_CODE = "888888";
 const SUPER_ADMIN_CODE = "123456";
 
-// 預設值 (若資料庫無設定時使用)
+// 預設值
 const DEFAULT_SOURCES = ["FB", "帆布", "591", "小黃板", "DM", "他人介紹", "自行開發", "官方LINE", "其他"];
 const DEFAULT_CATEGORIES = ["買方", "賣方", "承租方", "出租方"];
 const DEFAULT_LEVELS = ["A", "B", "C"];
@@ -177,6 +177,9 @@ export default function ClientFlow() {
   const [currentUser, setCurrentUser] = useState(null); 
   const [customers, setCustomers] = useState([]);
   const [loading, setLoading] = useState(true);
+  // [新增] 錯誤狀態
+  const [authError, setAuthError] = useState(''); 
+
   const [view, setView] = useState('login'); 
   const [activeTab, setActiveTab] = useState('clients');
   const [selectedCustomer, setSelectedCustomer] = useState(null);
@@ -185,11 +188,9 @@ export default function ClientFlow() {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   
-  // Projects & Ads State
   const [companyProjects, setCompanyProjects] = useState(DEFAULT_PROJECTS);
   const [projectAds, setProjectAds] = useState({}); 
 
-  // 全域設定 State
   const [appSettings, setAppSettings] = useState({
       sources: DEFAULT_SOURCES,
       categories: DEFAULT_CATEGORIES,
@@ -197,8 +198,7 @@ export default function ClientFlow() {
   });
   const [newOption, setNewOption] = useState(''); 
 
-  // Dashboard Sub-view
-  const [dashboardView, setDashboardView] = useState('stats'); // 'stats' | 'ads' | 'settings'
+  const [dashboardView, setDashboardView] = useState('stats');
 
   const [newRegionName, setNewRegionName] = useState('');
   const [newProjectNames, setNewProjectNames] = useState({});
@@ -228,7 +228,6 @@ export default function ClientFlow() {
     });
   };
 
-  // 根據 Dark Mode 同步 Body 背景色
   useEffect(() => {
       if (darkMode) {
           document.documentElement.classList.add('dark');
@@ -239,9 +238,15 @@ export default function ClientFlow() {
       }
   }, [darkMode]);
 
+  // [修改] 增加連線錯誤偵測
   useEffect(() => {
     const initAuth = async () => {
-      await signInAnonymously(auth);
+      try {
+        await signInAnonymously(auth);
+      } catch (e) {
+        console.error("Auth failed:", e);
+        setAuthError(e.message); // 捕捉錯誤訊息
+      }
     };
     initAuth();
     const unsubscribe = onAuthStateChanged(auth, (u) => {
@@ -284,7 +289,7 @@ export default function ClientFlow() {
     return () => unsubscribe();
   }, [sessionUser, currentUser]);
 
-  // Fetch Company Settings (All)
+  // Fetch Settings
   useEffect(() => {
     if (!currentUser?.companyCode) return;
     const settingsDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'company_settings', currentUser.companyCode);
@@ -615,10 +620,7 @@ export default function ClientFlow() {
           try {
              const userRef = doc(db, 'artifacts', appId, 'public', 'data', 'app_users', item.id);
              await deleteDoc(userRef);
-          } catch(e) {
-             console.error(e);
-             alert("刪除失敗，請檢查網路或權限");
-          }
+          } catch(e) { alert("刪除失敗"); }
       } else if (type === 'ad') {
           let currentAds = projectAds[region] || [];
           const updatedAdsList = currentAds.filter(a => (a.id ? a.id !== item.id : a !== item)); 
@@ -787,8 +789,6 @@ export default function ClientFlow() {
     );
   };
   
-  // [修正] 新增/刪除通用選項時使用 input list 模式
-  // 為了簡化，這邊只提供增加與刪除功能，業務端直接使用 input list 即可讀取
   const renderSettingsDashboard = () => {
       const tabs = [
           { key: 'sources', label: '來源設定' },
@@ -953,6 +953,7 @@ export default function ClientFlow() {
   const LoginScreen = () => {
     const [isRegister, setIsRegister] = useState(false);
     const [form, setForm] = useState({ username: '', password: '', name: '', role: 'user', adminCode: '', companyCode: '', rememberMe: false });
+    const [authError, setAuthError] = useState(''); // [新增]
     const [captcha, setCaptcha] = useState("");
     const [captchaInput, setCaptchaInput] = useState("");
 
@@ -975,6 +976,9 @@ export default function ClientFlow() {
         if (success) { setIsRegister(false); setForm(p => ({...p, password: '', adminCode: ''})); }
       } else handleLogin(form.username, form.password, form.companyCode, form.rememberMe);
     };
+    
+    // [新增] 顯示初始化錯誤
+    if (authError) return <div className="min-h-screen flex flex-col items-center justify-center p-4 text-center text-red-500"><AlertTriangle size={48} /><p className="mt-4 font-bold">{authError}</p></div>;
 
     return (
       <div className={`min-h-screen w-full flex items-center justify-center p-4 transition-colors ${darkMode ? 'bg-slate-950' : 'bg-gray-100'}`}>
@@ -1019,7 +1023,7 @@ export default function ClientFlow() {
     const [formData, setFormData] = useState(initialData || { name: '', gender: '男', category: '買方', level: 'C', company: '', phone: '', secondaryAgent: '', value: '', contactTime: '', source: '其他', project: '', address: '', reqRegion: '', reqPing: '', status: 'potential', remarks: '', email: '', businessCard: '', createdAt: formatDateString(new Date()) });
     const [isProcessingImg, setIsProcessingImg] = useState(false);
     
-    // [選單防呆]
+    // [選單防呆] + [手動輸入支援]
     const availableSources = useMemo(() => {
         let sources = [...appSettings.sources];
         if (formData.project && projectAds[formData.project]) {
@@ -1061,8 +1065,8 @@ export default function ClientFlow() {
 
                 <h3 className="text-sm font-bold text-blue-500 uppercase tracking-widest border-b pb-2 mt-6">需求與來源</h3>
                 <div className="grid grid-cols-2 gap-4">
-                    <div><label className="text-xs font-bold text-gray-400 block mb-1">需求分類</label><select className="w-full px-3 py-2 border rounded-lg" value={formData.category} onChange={e => setFormData({...formData, category: e.target.value})}>{appSettings.categories.map(c => <option key={c}>{c}</option>)}</select></div>
-                    <div><label className="text-xs font-bold text-gray-400 block mb-1">客戶級別</label><select className="w-full px-3 py-2 border rounded-lg" value={formData.level} onChange={e => setFormData({...formData, level: e.target.value})}>{appSettings.levels.map(l => <option key={l}>{l}</option>)}</select></div>
+                    <div><label className="text-xs font-bold text-gray-400 block mb-1">需求分類</label><input list="cat-list" className="w-full px-3 py-2 border rounded-lg" value={formData.category} onChange={e => setFormData({...formData, category: e.target.value})}/><datalist id="cat-list">{appSettings.categories.map(c => <option key={c} value={c}/>)}</datalist></div>
+                    <div><label className="text-xs font-bold text-gray-400 block mb-1">客戶級別</label><input list="lvl-list" className="w-full px-3 py-2 border rounded-lg" value={formData.level} onChange={e => setFormData({...formData, level: e.target.value})}/><datalist id="lvl-list">{appSettings.levels.map(l => <option key={l} value={l}/>)}</datalist></div>
                 </div>
                 
                 {/* 獨立一行顯示案場與來源 */}
@@ -1075,9 +1079,10 @@ export default function ClientFlow() {
                 </div>
                 <div>
                     <label className="text-xs font-bold text-gray-400 block mb-1">從何得知</label>
-                    <select className="w-full px-3 py-2 border rounded-lg" value={formData.source} onChange={e => setFormData({...formData, source: e.target.value})}>
-                        {availableSources.map(s => <option key={s} value={s}>{s}</option>)}
-                    </select>
+                    <input list="src-list" className="w-full px-3 py-2 border rounded-lg" value={formData.source} onChange={e => setFormData({...formData, source: e.target.value})} placeholder="選擇或輸入..."/>
+                    <datalist id="src-list">
+                        {availableSources.map(s => <option key={s} value={s}/>)}
+                    </datalist>
                 </div>
 
                 <div className="grid grid-cols-3 gap-2">
